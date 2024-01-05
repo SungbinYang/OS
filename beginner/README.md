@@ -12,3 +12,4 @@
 ## CPU와 Process, Thread
 
 - CPU도 당신처럼 미리 예측하고 움직인다.
+- CPU 예측이 가져올 수 있는 문제점
