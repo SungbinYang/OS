@@ -8,3 +8,7 @@
 
 - 인터럽트에서 DirectX까지
 - DMA와 고성능 소켓
+
+## CPU와 Process, Thread
+
+- CPU도 당신처럼 미리 예측하고 움직인다.
