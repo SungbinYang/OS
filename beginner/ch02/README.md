@@ -154,3 +154,156 @@ fork() 시스템 호출은 새로운 프로세스를 위한 메모리를 할당�
 간단히 정리하면, fork()의 결과는 프로세스가 하나 더 생기는 것이다.( = 프로세스 id- PID 가 완전히 다른 또 하나의 프로세스가 생기는 것). 반면 exec() 실행의 결과로 생성되는 새로운 프로세스는 없고, exec()를 호출한 프로세스의 PID가 그대로 새로운 프로세스에 적용이 되며, exec()를 호출한 프로세스는 새로운 프로세스에 의해 덮어 쓰이게 된다.
 
 그리고 wait와 waitForSingleObject는 어떤 하나의 Object를 기다린다는 말로 가끔 프로세스가 종료될 때까지 기다려야 하는 상황에 사용한다. 이 함수들을 사용하면 프로세스 상태가 대기상태로 빠지게 된다.
+
+> 이 포스트는 [널널한 개발자](https://www.inflearn.com/course/%EA%B3%B0%EC%B1%85-%EC%89%BD%EA%B2%8C-%EB%B0%B0%EC%9A%B0%EB%8A%94-%EC%9A%B4%EC%98%81%EC%B2%B4%EC%A0%9C/dashboard)님의 강의를 듣고 작성한 글입니다.
+
+## 멀티스레딩과 동기화 기본
+
+프로세스가 여러 개 있는 경우를 멀티 태스킹이라 한다. 프로세스에게 OS가 권한도 부여하고 VMS를 프로세스 단위로 부여한다. 이런 VMS를 공유한다는 것이 스레드의 특징이다.
+
+> VMS는 공간적인 의미로 스레드 각자 차지하는 공간이 Stack, 나머지 공용공간을 heap이라고 한다. 추가적으로 Data 영역이 있는데 이 공간에는 전역변수 같은 것들이 들어가져 있다.
+
+무언가 여러개가 되면 동기화 이슈가 난다. 예를 들어 VMS가 집이라고 가정하면 가장 동기화 이슈가 많이 일어나는 것이 화장실이다. 스레드들이 화장실이라는 자원을 먼저 선점하려고 노력을 할 것이다. 특히 아침시간대에 일어나는데 아침시간대를 병목현상이 일어날 때 발생할 것이다. 혹은 race condition(경쟁 상태)가 발생한다. 이런 race condition은 냉장고 같은데서 맛있는 걸 먼저 먹으려고 할 때 일어난다. 즉, 이런 상황으로 설계할 것이냐 아니면 조그마한 오피스텔처럼 각각의 방에 부엌, 화장실, 침실이 있는 경우로 설계할 것이냐인데 전자의 경우가 멀티스레드 환경, 후자의 경우가 멀티태스킹 환경이라고 한다. 보통의 경우 후자가 더 효율적이라고 느낄 수 있지만 굳이 여러 개의 부엌, 화장실이 있으면 자원의 낭비가 될 수 있어 멀티태스킹 환경보다는 멀티스레드 환경이 더 효율적인 측면에서 유리하다고 볼 수 있다.
+
+스레드는 연산의 단위인데 CPU라는 자원을 선점하는 것은 프로세스가 아니라 스레드가 선점한다. 다만, CPU가 코어 8개라고 하면 코어 8개중 몇 개를 쓰라고 OS가 권한을 부여하는데 이는 프로세스한테 부여한다. 그래서 스레드는 프로세스에 대한 권한이라던가 리소스 할당같은 경우 제한을 받는다. 그래서 VMS에서 공통요소로 볼 수 있는 정적영역은 같이 쓰고 개별화된 스택은 스레드마다 가져간다. 스택에는 지역변수 + 자동변수에 쓰는데 용량이 굉장히 적다. 그리고 레지스터 정보에는 TCB가 있는데 스레드마다 실행이 이루어지고 연산을 하고 CPU의 코어가 하다보니 이 코어 속에 그때의 레지스터가 들어가져 있다. 그래서 뭔가 연산을 하게 되면 이 CPU의 코어의 레지스터의 변화가 생긴다. 그 코어의 레지스터 상태를 백업했다가 되돌렸다가 하는데 그걸 Context Switching이라고 한다.
+
+> 스레드는 프로세스처럼 상태를 가진다. 그래서 프로세스가 어떤 상태를 가진다는 것은 그 안의 스레드가 그 상태를 가진다고 볼 수 있다.
+
+그러면 스레드는 왜 사용할까? 기본적으로 프로그램이 실행이 되면 보통 우리는 GUI를 보고 프로그램이 죽었는지 살았는지 알 수 있다. 근데 표면적인 것 외에 내부처리가 있을 수 있는데 즉, GUI와 내부처리는 별도의 스레드를 사용한다. 즉 개별화된 흐름이 이루어지는데 이 둘 간의 동기화가 가장 중요한 이슈다.
+
+그러면 동기화 문제와 동기화하는 코드를 보겠다.
+
+``` c++
+#include <iostream>
+#include <Windows.h>
+#include <process.h>
+
+int g_data;
+
+bool g_bFlag = true;
+
+void threadFunction01(void* pArgs) {
+  std::cout << "threadFunction01 - Begin\n";
+
+  while (g_bFlag) {
+    g_data = 1000;
+  }
+  
+  std::cout << "threadFunction01 - End\n";
+}
+
+void threadFunction02(void* pArgs) {
+  std::cout << "threadFunction02 - Begin\n";
+
+  while (g_bFlag) {
+    g_data = 2000;
+  }
+
+  std::cout << "threadFunction02 - End\n";
+}
+
+void threadFunction03(void* pArgs) {
+  for (int i = 0; i < 10; ++i) {
+    std::cout << "threadFunction03() g_data: " << g_data << std::endl;
+    Sleep(0);
+  }
+}
+
+int main() {
+  std::cout << "Hello World! - Begin\n";
+
+  g_bFlag = true;
+
+  ::_beginthread(threadFunction01, 0, nullptr);
+  ::_beginthread(threadFunction02, 0, nullptr);
+  ::_beginthread(threadFunction03, 0, nullptr);
+
+  // 호출자 쓰레드가 대기상태로 전환
+  ::Sleep(100); // 우연에 맡기는 코드
+
+  g_bFlag = false;
+
+  std::cout << "Hello World! - End\n";
+}
+```
+
+위의 코드를 보면 c++로 스레드간 race-condition을 발생한 상태이다. 매인 함수 안에 각각의 스레드 함수를 실행시켰다. 그리고 호출자 스레드를 대기상태로 전환을 하면 어떻게 될까? 어느 스레드가 먼저 호출될까? 그건 모른다. 심지어 메인 스레드가 종료가 되고나서 스레드 1번이 종료될 수 있고 나머지 스레드들은 종료가 안 될 수 있다.
+
+그럼 이 부분을 어떻게 동기화(교통정리)를 해줄까?
+
+``` c++
+#include <iostream>
+#include <Windows.h>
+#include <process.h>
+
+int g_data;
+bool g_bFlag = true;
+HANDLE g_hThreadExit01, g_hThreadExit02, g_hThreadExit03;
+
+void threadFunction01(void* pArgs) {
+  std::cout << "threadFunction01 - Begin\n";
+
+  while (g_bFlag) {
+    g_data = 1000;
+  }
+  
+  std::cout << "threadFunction01 - End\n";
+  ::SetEvent(g_hThreadExit01);
+}
+
+void threadFunction02(void* pArgs) {
+  std::cout << "threadFunction02 - Begin\n";
+
+  while (g_bFlag) {
+    g_data = 2000;
+  }
+
+  std::cout << "threadFunction02 - End\n";
+  ::SetEvent(g_hThreadExit02);
+}
+
+void threadFunction03(void* pArgs) {
+  for (int i = 0; i < 10; ++i) {
+    std::cout << "threadFunction03() g_data: " << g_data << std::endl;
+    Sleep(0);
+  }
+
+  ::SetEvent(g_hThreadExit03);
+}
+
+int main() {
+  std::cout << "Hello World! - Begin\n";
+
+  g_bFlag = true;
+
+  g_hThreadExit01 = ::CreateEventA(nullptr, true, false, "T_THREAD_01");
+  g_hThreadExit02 = ::CreateEventA(nullptr, true, false, "T_THREAD_02");
+  g_hThreadExit03 = ::CreateEventA(nullptr, true, false, "T_THREAD_03");
+
+  ::_beginthread(threadFunction01, 0, nullptr);
+  ::_beginthread(threadFunction02, 0, nullptr);
+
+  ::Sleep(10);
+
+  ::_beginthread(threadFunction03, 0, nullptr);
+
+  // 호출자 쓰레드가 대기상태로 전환
+  // ::Sleep(100); // 우연에 맡기는 코드
+
+  ::WaitForSingleObject(g_hThreadExit03, INFINITE);
+
+  g_bFlag = false;
+
+  // T1, T2의 종료 이벤트를 대기
+  ::WaitForSingleObject(g_hThreadExit01, INFINITE);
+  ::WaitForSingleObject(g_hThreadExit02, INFINITE);
+
+  ::CloseHandle(g_hThreadExit01);
+  ::CloseHandle(g_hThreadExit02);
+  ::CloseHandle(g_hThreadExit03);
+
+  std::cout << "Hello World! - End\n";
+}
+```
+
+C++의 void pointer인 HANDLE을 사용하여 전역변수를 설정하고 CreateEventA라는 메서드로 동기화 작업을 해준다. 그리고 종료 전에 종료 이벤트를 대기시켜 주는 형식으로 동기화를 한다. 저자는 C++의 문법에 익숙치 않지만 여기서 핵심은 스레드 간의 전역변수라는 자원을 변경하려는 시도를 동시에 진행을 한다. 동기화를 해주지 않으면 예상치 못한 결과를 얻을 것이므로 스레드 프로그래밍을 할 경우 이런 동기화 작업을 적절히 생각을 하고 Sleep() 함수등을 적절히 사용해야 한다.
