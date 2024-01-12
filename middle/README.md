@@ -27,3 +27,4 @@
 - FIFO
 - SJF
 - RR
+- MLFQ
